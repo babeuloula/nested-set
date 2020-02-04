@@ -110,9 +110,83 @@ SQL
     {
     }
 
-    /** @param mixed $nodeId */
-    public function deleteNode($nodeId): void
+    /** @param mixed $primaryKeyValue */
+    public function deleteNode($primaryKeyValue): bool
     {
+        $this->connection->beginTransaction();
+
+        $statement = $this->connection->prepare(
+            <<<SQL
+SELECT @myLeft:=:leftColumn, @myRight:=:rightColumn, @myWidth:=:rightColumn-:leftColumn + 1, @mySegment:=:parentColumn
+FROM :tableName
+WHERE :primaryKey = :primaryKeyValue
+SQL
+        );
+
+        $statement->execute(
+            [
+                'leftColumn' => $this->config->getLeftColumn(),
+                'rightColumn' => $this->config->getRightColumn(),
+                'parentColumn' => $this->config->getParentColumn(),
+                'tableName' => $this->config->getTableName(),
+                'primaryKey' => $this->config->getPrimaryKey(),
+                'primaryKeyValue' => $primaryKeyValue,
+            ]
+        );
+
+        $statement = $this->connection->prepare(
+            <<<SQL
+DELETE FROM :tableName
+WHERE :parentColumn = @mySegment
+    AND :leftColumn BETWEEN @myLeft AND @myRight
+SQL
+        );
+
+        $statement->execute(
+            [
+                'tableName' => $this->config->getTableName(),
+                'parentColumn' => $this->config->getParentColumn(),
+                'leftColumn' => $this->config->getLeftColumn(),
+            ]
+        );
+
+        $statement = $this->connection->prepare(
+            <<<SQL
+UPDATE :tableName
+SET :rightColumn = :rightColumn - @myWidth
+WHERE :parentColumn = @mySegment
+    AND :rightColumn > @myRight
+ORDER BY :rightColumn ASC
+SQL
+        );
+
+        $statement->execute(
+            [
+                'tableName' => $this->config->getTableName(),
+                'rightColumn' => $this->config->getRightColumn(),
+                'parentColumn' => $this->config->getParentColumn(),
+            ]
+        );
+
+        $statement = $this->connection->prepare(
+            <<<SQL
+UPDATE :tableName
+SET :leftColumn = :leftColumn - @myWidth
+WHERE :parentColumn = @mySegment
+    AND :leftColumn > @myRight
+ORDER BY :leftColumn ASC
+SQL
+        );
+
+        $statement->execute(
+            [
+                'tableName' => $this->config->getTableName(),
+                'leftColumn' => $this->config->getLeftColumn(),
+                'parentColumn' => $this->config->getParentColumn(),
+            ]
+        );
+
+        return $this->connection->commit();
     }
 
     /**
