@@ -3,7 +3,8 @@
     "description": "The nested set model is a technique for representing nested sets (also known as trees or hierarchies) in relational databases.",
     "type": "library",
     "require": {
-        "php": "^7.1"
+        "php": "^7.1",
+        "doctrine/dbal": "^2.9"
     },
     "require-dev": {
         "babeuloula/phpcs": "^1.2",
@@ -16,6 +17,11 @@
             "email": "info@babeuloula.fr"
         }
     ],
+    "autoload": {
+        "psr-4": {
+            "BaBeuloula\\": "src/"
+        }
+    },
     "config": {
         "preferred-install": {
             "*": "dist"
