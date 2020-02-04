@@ -8,4 +8,4 @@ databases.
 ## Tests
 
 If you don't have PHP but you have Docker and Docker Compose on your system, you can run `make install`. It will install
-a PHP 7.2 FPM. After the installation you can run `make shell` to connect into the PHP's container.
+a PHP 7.1 FPM. After the installation you can run `make shell` to connect into the PHP's container.
