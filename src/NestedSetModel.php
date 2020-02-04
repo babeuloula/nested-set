@@ -105,9 +105,140 @@ SQL
     {
     }
 
-    /** @param mixed $nodeId */
-    public function moveNode($nodeId, int $newLeftPosition): void
+    /** @param mixed $primaryKeyValue */
+    public function moveNode($primaryKeyValue, int $newLeftPosition): bool
     {
+        $this->connection->beginTransaction();
+
+        $this
+            ->connection
+            ->prepare(
+                <<<SQL
+SELECT @myLeft:=:leftColumn, @myRight:=:rightColumn, @myWidth:=:rightColumn - :leftColumn + 1, @myParent:=:parentColumn,
+    @myNewLeftPosition:=:newLeftPosition,
+    @distance:=:newLeftPosition - :leftColumn
+        + IF(:newLeftPosition < :leftColumn, - (:rightColumn - :leftColumn + 1), 0),
+    @tmpLeft:=:leftColumn + IF(:newLeftPosition < :leftColumn, (:rightColumn - :leftColumn + 1), 0)
+FROM :tableName
+WHERE :primaryKey = :primaryKeyValue
+SQL
+            )
+            ->execute(
+                [
+                    'leftColumn' => $this->config->getLeftColumn(),
+                    'rightColumn' => $this->config->getRightColumn(),
+                    'parentColumn' => $this->config->getParentColumn(),
+                    'newLeftPosition' => $newLeftPosition,
+                    'tableName' => $this->config->getTableName(),
+                    'primaryKey' => $this->config->getPrimaryKey(),
+                    'primaryKeyValue' => $primaryKeyValue,
+                ]
+            )
+        ;
+
+        $this
+            ->connection
+            ->prepare(
+                <<<SQL
+UPDATE :tableName
+SET :leftColumn = :leftColumn + @myWidth
+WHERE :parentColumn = @myParent 
+    AND :leftColumn >= @myNewLeftPosition
+ORDER BY :leftColumn DESC
+SQL
+            )
+            ->execute(
+                [
+                    'tableName' => $this->config->getTableName(),
+                    'leftColumn' => $this->config->getLeftColumn(),
+                    'parentColumn' => $this->config->getParentColumn(),
+                ]
+            )
+        ;
+
+        $this
+            ->connection
+            ->prepare(
+                <<<SQL
+UPDATE :tableName
+SET :rightColumn = :rightColumn + @myWidth
+WHERE :parentColumn = @myParent
+    AND :rightColumn >= @myNewLeftPosition
+ORDER BY :rightColumn DESC
+SQL
+            )
+            ->execute(
+                [
+                    'tableName' => $this->config->getTableName(),
+                    'rightColumn' => $this->config->getRightColumn(),
+                    'parentColumn' => $this->config->getParentColumn(),
+                ]
+            )
+        ;
+
+        $this
+            ->connection
+            ->prepare(
+                <<<SQL
+UPDATE :tableName
+SET :leftColumn = :leftColumn + @distance, :rightColumn = :rightColumn + @distance
+WHERE :parentColumn = @myParent
+    AND :leftColumn >= @tmpLeft
+    AND :rightColumn < @tmpLeft + @myWidth
+ORDER BY :leftColumn ASC
+SQL
+            )
+            ->execute(
+                [
+                    'tableName' => $this->config->getTableName(),
+                    'leftColumn' => $this->config->getLeftColumn(),
+                    'rightColumn' => $this->config->getRightColumn(),
+                    'parentColumn' => $this->config->getParentColumn(),
+                ]
+            )
+        ;
+
+        $this
+            ->connection
+            ->prepare(
+                <<<SQL
+UPDATE :tableName
+SET :leftColumn = :leftColumn - @myWidth
+WHERE :parentColumn = @myParent
+    AND :leftColumn > @myRight
+ORDER BY :leftColumn ASC
+SQL
+            )
+            ->execute(
+                [
+                    'tableName' => $this->config->getTableName(),
+                    'leftColumn' => $this->config->getLeftColumn(),
+                    'parentColumn' => $this->config->getParentColumn(),
+                ]
+            )
+        ;
+
+        $this
+            ->connection
+            ->prepare(
+                <<<SQL
+UPDATE :tableName
+SET :rightColumn = :rightColumn - @myWidth
+WHERE :parentColumn = @myParent
+    AND :rightColumn > @myRight
+ORDER BY :rightColumn ASC
+SQL
+            )
+            ->execute(
+                [
+                    'tableName' => $this->config->getTableName(),
+                    'rightColumn' => $this->config->getRightColumn(),
+                    'parentColumn' => $this->config->getParentColumn(),
+                ]
+            )
+        ;
+
+        return $this->connection->commit();
     }
 
     /** @param mixed $primaryKeyValue */
@@ -115,76 +246,84 @@ SQL
     {
         $this->connection->beginTransaction();
 
-        $statement = $this->connection->prepare(
-            <<<SQL
-SELECT @myLeft:=:leftColumn, @myRight:=:rightColumn, @myWidth:=:rightColumn-:leftColumn + 1, @mySegment:=:parentColumn
+        $this
+            ->connection
+            ->prepare(
+                <<<SQL
+SELECT @myLeft:=:leftColumn, @myRight:=:rightColumn, @myWidth:=:rightColumn-:leftColumn + 1, @myParent:=:parentColumn
 FROM :tableName
 WHERE :primaryKey = :primaryKeyValue
 SQL
-        );
+            )
+            ->execute(
+                [
+                    'leftColumn' => $this->config->getLeftColumn(),
+                    'rightColumn' => $this->config->getRightColumn(),
+                    'parentColumn' => $this->config->getParentColumn(),
+                    'tableName' => $this->config->getTableName(),
+                    'primaryKey' => $this->config->getPrimaryKey(),
+                    'primaryKeyValue' => $primaryKeyValue,
+                ]
+            )
+        ;
 
-        $statement->execute(
-            [
-                'leftColumn' => $this->config->getLeftColumn(),
-                'rightColumn' => $this->config->getRightColumn(),
-                'parentColumn' => $this->config->getParentColumn(),
-                'tableName' => $this->config->getTableName(),
-                'primaryKey' => $this->config->getPrimaryKey(),
-                'primaryKeyValue' => $primaryKeyValue,
-            ]
-        );
-
-        $statement = $this->connection->prepare(
-            <<<SQL
+        $this
+            ->connection
+            ->prepare(
+                <<<SQL
 DELETE FROM :tableName
-WHERE :parentColumn = @mySegment
+WHERE :parentColumn = @myParent
     AND :leftColumn BETWEEN @myLeft AND @myRight
 SQL
-        );
+            )
+            ->execute(
+                [
+                    'tableName' => $this->config->getTableName(),
+                    'parentColumn' => $this->config->getParentColumn(),
+                    'leftColumn' => $this->config->getLeftColumn(),
+                ]
+            )
+        ;
 
-        $statement->execute(
-            [
-                'tableName' => $this->config->getTableName(),
-                'parentColumn' => $this->config->getParentColumn(),
-                'leftColumn' => $this->config->getLeftColumn(),
-            ]
-        );
-
-        $statement = $this->connection->prepare(
-            <<<SQL
+        $this
+            ->connection
+            ->prepare(
+                <<<SQL
 UPDATE :tableName
 SET :rightColumn = :rightColumn - @myWidth
-WHERE :parentColumn = @mySegment
+WHERE :parentColumn = @myParent
     AND :rightColumn > @myRight
 ORDER BY :rightColumn ASC
 SQL
-        );
+            )
+            ->execute(
+                [
+                    'tableName' => $this->config->getTableName(),
+                    'rightColumn' => $this->config->getRightColumn(),
+                    'parentColumn' => $this->config->getParentColumn(),
+                ]
+            )
+        ;
 
-        $statement->execute(
-            [
-                'tableName' => $this->config->getTableName(),
-                'rightColumn' => $this->config->getRightColumn(),
-                'parentColumn' => $this->config->getParentColumn(),
-            ]
-        );
-
-        $statement = $this->connection->prepare(
-            <<<SQL
+        $this
+            ->connection
+            ->prepare(
+                <<<SQL
 UPDATE :tableName
 SET :leftColumn = :leftColumn - @myWidth
-WHERE :parentColumn = @mySegment
+WHERE :parentColumn = @myParent
     AND :leftColumn > @myRight
 ORDER BY :leftColumn ASC
 SQL
-        );
-
-        $statement->execute(
-            [
-                'tableName' => $this->config->getTableName(),
-                'leftColumn' => $this->config->getLeftColumn(),
-                'parentColumn' => $this->config->getParentColumn(),
-            ]
-        );
+            )
+            ->execute(
+                [
+                    'tableName' => $this->config->getTableName(),
+                    'leftColumn' => $this->config->getLeftColumn(),
+                    'parentColumn' => $this->config->getParentColumn(),
+                ]
+            )
+        ;
 
         return $this->connection->commit();
     }
