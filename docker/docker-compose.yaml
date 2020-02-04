@@ -1,0 +1,12 @@
+version: '3.5'
+
+services:
+    php:
+        build:
+            context: ..
+            dockerfile: docker/php/Dockerfile
+            args:
+                UID: "${DOCKER_UID}"
+        volumes:
+            - ..:/var/www/html
+        restart: "no"
