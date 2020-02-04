@@ -115,7 +115,36 @@ SQL
     {
     }
 
-    public function getFullTree(): void
+    /**
+     * @param mixed $parentColumnValue
+     *
+     * @return \Generator<array|\stdClass>
+     */
+    public function getFullTree($parentColumnValue): \Generator
     {
+        $statement = $this->connection->prepare(
+            <<<SQL
+SELECT (COUNT(parent.:primaryKey) - 1) AS depth, node.*
+FROM :tableName AS node, :tableName AS parent
+WHERE node.:parentColumn = :parentColumnValue
+    AND parent.:parentColumn = :parentColumnValue
+    AND node.:leftColumn BETWEEN parent.:leftColumn AND parent.:rightColumn
+GROUP BY node.:primaryKey
+ORDER BY node.:leftColumn;
+SQL
+        );
+
+        $statement->execute(
+            [
+                'tableName' => $this->config->getTableName(),
+                'primaryKey' => $this->config->getPrimaryKey(),
+                'parentColumn' => $this->config->getParentColumn(),
+                'parentColumnValue' => $parentColumnValue,
+                'leftColumn' => $this->config->getLeftColumn(),
+                'rightColumn' => $this->config->getRightColumn(),
+            ]
+        );
+
+        yield $statement->fetch($this->config->getFetchMode());
     }
 }
