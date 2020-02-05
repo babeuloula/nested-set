@@ -25,27 +25,24 @@ class NestedSetModel
     }
 
     /**
-     * @param mixed $primaryKeyValue
-     * @param mixed $parentColumnValue
+     * @param mixed $nodeId
      *
      * @return \Generator<array|\stdClass>
      */
-    public function getSiblings($primaryKeyValue, $parentColumnValue): \Generator
+    public function getSiblings($nodeId): \Generator
     {
         $statement = $this->connection->prepare(
             <<<SQL
 SELECT child.*
 FROM :tableName parent
-JOIN :tableName child
-    ON (child.:leftColumn > parent.:leftColumn AND child.:rightColumn < parent.:rightColumn
-    AND child.:parentColumn = :parentColumnValue)
+JOIN :tableName child 
+    ON (child.:leftColumn > parent.:leftColumn
+    AND child.:rightColumn < parent.:rightColumn
 LEFT JOIN :tableName intermediate
     ON (intermediate.:leftColumn > parent.:leftColumn AND intermediate.:rightColumn < parent.:rightColumn
     AND child.:leftColumn > intermediate.:leftColumn AND child.:rightColumn < intermediate.:rightColumn
-    AND intermediate.:parentColumn = :parentColumnValue)
-WHERE intermediate.:primaryKey IS NULL
-    AND parent.:primaryKey = :primaryKeyValue
-    AND parent.:parentColumn = :parentColumnValue
+WHERE intermediate.:nodeColumn IS NULL
+    AND parent.:nodeColumn = :nodeColumnValue
 ORDER BY child.:leftColumn;
 SQL
         );
@@ -54,10 +51,8 @@ SQL
                 'tableName' => $this->config->getTableName(),
                 'leftColumn' => $this->config->getLeftColumn(),
                 'rightColumn' => $this->config->getRightColumn(),
-                'parentColumn' => $this->config->getParentColumn(),
-                'primaryKey' => $this->config->getPrimaryKey(),
-                'primaryKeyValue' => $primaryKeyValue,
-                'parentColumnValue' => $parentColumnValue,
+                'nodeColumn' => $this->config->getNodeColumn(),
+                'nodeColumnValue' => $nodeId,
             ]
         );
 
@@ -65,11 +60,11 @@ SQL
     }
 
     /**
-     * @param mixed $primaryKeyValue
+     * @param mixed $nodeId
      *
      * @return \Generator<array|\stdClass>
      */
-    public function getAncestors($primaryKeyValue): \Generator
+    public function getAncestors($nodeId): \Generator
     {
         $statement = $this->connection->prepare(
             <<<SQL
@@ -78,7 +73,7 @@ FROM :tableName parent
 LEFT JOIN :tableName child
     ON (parent.:leftColumn < child.:leftColumn AND parent.:rightColumn > child.:rightColumn
     AND parent.:parentColumn = child.:parentColumn)
-WHERE child.:primaryKey = :primaryKeyValue
+WHERE child.:nodeColumn = :nodeColumnValue
 ORDER BY parent.:leftColumn ASC;
 SQL
         );
@@ -88,9 +83,33 @@ SQL
                 'tableName' => $this->config->getTableName(),
                 'leftColumn' => $this->config->getLeftColumn(),
                 'rightColumn' => $this->config->getRightColumn(),
-                'parentColumn' => $this->config->getParentColumn(),
-                'primaryKey' => $this->config->getPrimaryKey(),
-                'primaryKeyValue' => $primaryKeyValue,
+                'nodeColumn' => $this->config->getNodeColumn(),
+                'nodeColumnValue' => $nodeId,
+            ]
+        );
+
+        yield $statement->fetch($this->config->getFetchMode());
+    }
+
+    /** @return \Generator<array|\stdClass> */
+    public function getFullTree(): \Generator
+    {
+        $statement = $this->connection->prepare(
+            <<<SQL
+SELECT (COUNT(parent.:nodeColumn) - 1) AS depth, node.*
+FROM :tableName AS node, :tableName AS parent
+WHERE node.:leftColumn BETWEEN parent.:leftColumn AND parent.:rightColumn
+GROUP BY node.:nodeColumn
+ORDER BY node.:leftColumn;
+SQL
+        );
+
+        $statement->execute(
+            [
+                'tableName' => $this->config->getTableName(),
+                'nodeColumn' => $this->config->getNodeColumn(),
+                'leftColumn' => $this->config->getLeftColumn(),
+                'rightColumn' => $this->config->getRightColumn(),
             ]
         );
 
@@ -101,263 +120,224 @@ SQL
     {
     }
 
-    public function updateNode(): void
+    /** @param mixed $nodeId */
+    public function moveNode($nodeId, int $newLeftPosition): self
     {
+        try {
+            $this->connection->beginTransaction();
+
+            $this
+                ->connection
+                ->prepare(
+                    <<<SQL
+    SELECT @myLeft:=:leftColumn, @myRight:=:rightColumn, @myWidth:=:rightColumn - :leftColumn + 1,
+        @myNewLeftPosition:=:newLeftPosition,
+        @distance:=:newLeftPosition - :leftColumn
+            + IF(:newLeftPosition < :leftColumn, - (:rightColumn - :leftColumn + 1), 0),
+        @tmpLeft:=:leftColumn + IF(:newLeftPosition < :leftColumn, (:rightColumn - :leftColumn + 1), 0)
+    FROM :tableName
+    WHERE :nodeColumn = :nodeColumnValue
+SQL
+                )
+                ->execute(
+                    [
+                        'leftColumn' => $this->config->getLeftColumn(),
+                        'rightColumn' => $this->config->getRightColumn(),
+                        'newLeftPosition' => $newLeftPosition,
+                        'tableName' => $this->config->getTableName(),
+                        'nodeColumn' => $this->config->getNodeColumn(),
+                        'nodeColumnValue' => $nodeId,
+                    ]
+                )
+            ;
+
+            $this
+                ->connection
+                ->prepare(
+                    <<<SQL
+    UPDATE :tableName
+    SET :leftColumn = :leftColumn + @myWidth
+    WHERE :leftColumn >= @myNewLeftPosition
+    ORDER BY :leftColumn DESC
+SQL
+                )
+                ->execute(
+                    [
+                        'tableName' => $this->config->getTableName(),
+                        'leftColumn' => $this->config->getLeftColumn(),
+                    ]
+                )
+            ;
+
+            $this
+                ->connection
+                ->prepare(
+                    <<<SQL
+    UPDATE :tableName
+    SET :rightColumn = :rightColumn + @myWidth
+    WHERE :rightColumn >= @myNewLeftPosition
+    ORDER BY :rightColumn DESC
+SQL
+                )
+                ->execute(
+                    [
+                        'tableName' => $this->config->getTableName(),
+                        'rightColumn' => $this->config->getRightColumn(),
+                    ]
+                )
+            ;
+
+            $this
+                ->connection
+                ->prepare(
+                    <<<SQL
+    UPDATE :tableName
+    SET :leftColumn = :leftColumn + @distance, :rightColumn = :rightColumn + @distance
+    WHERE :leftColumn >= @tmpLeft
+        AND :rightColumn < @tmpLeft + @myWidth
+    ORDER BY :leftColumn ASC
+SQL
+                )
+                ->execute(
+                    [
+                        'tableName' => $this->config->getTableName(),
+                        'leftColumn' => $this->config->getLeftColumn(),
+                        'rightColumn' => $this->config->getRightColumn(),
+                    ]
+                )
+            ;
+
+            $this
+                ->connection
+                ->prepare(
+                    <<<SQL
+    UPDATE :tableName
+    SET :leftColumn = :leftColumn - @myWidth
+    WHERE :leftColumn > @myRight
+    ORDER BY :leftColumn ASC
+SQL
+                )
+                ->execute(
+                    [
+                        'tableName' => $this->config->getTableName(),
+                        'leftColumn' => $this->config->getLeftColumn(),
+                    ]
+                )
+            ;
+
+            $this
+                ->connection
+                ->prepare(
+                    <<<SQL
+    UPDATE :tableName
+    SET :rightColumn = :rightColumn - @myWidth
+    WHERE :rightColumn > @myRight
+    ORDER BY :rightColumn ASC
+SQL
+                )
+                ->execute(
+                    [
+                        'tableName' => $this->config->getTableName(),
+                        'rightColumn' => $this->config->getRightColumn(),
+                    ]
+                )
+            ;
+
+            $this->connection->commit();
+        } catch (\Throwable $exception) {
+            $this->connection->rollBack();
+
+            throw $exception;
+        }
+
+        return $this;
     }
 
-    /** @param mixed $primaryKeyValue */
-    public function moveNode($primaryKeyValue, int $newLeftPosition): bool
+    /** @param mixed $nodeId */
+    public function deleteNode($nodeId): self
     {
-        $this->connection->beginTransaction();
+        try {
+            $this->connection->beginTransaction();
 
-        $this
-            ->connection
-            ->prepare(
-                <<<SQL
-SELECT @myLeft:=:leftColumn, @myRight:=:rightColumn, @myWidth:=:rightColumn - :leftColumn + 1, @myParent:=:parentColumn,
-    @myNewLeftPosition:=:newLeftPosition,
-    @distance:=:newLeftPosition - :leftColumn
-        + IF(:newLeftPosition < :leftColumn, - (:rightColumn - :leftColumn + 1), 0),
-    @tmpLeft:=:leftColumn + IF(:newLeftPosition < :leftColumn, (:rightColumn - :leftColumn + 1), 0)
-FROM :tableName
-WHERE :primaryKey = :primaryKeyValue
+            $this
+                ->connection
+                ->prepare(
+                    <<<SQL
+    SELECT @myLeft:=:leftColumn, @myRight:=:rightColumn, @myWidth:=:rightColumn-:leftColumn + 1
+    FROM :tableName
+    WHERE :nodeColumn = :nodeColumnValue
 SQL
-            )
-            ->execute(
-                [
-                    'leftColumn' => $this->config->getLeftColumn(),
-                    'rightColumn' => $this->config->getRightColumn(),
-                    'parentColumn' => $this->config->getParentColumn(),
-                    'newLeftPosition' => $newLeftPosition,
-                    'tableName' => $this->config->getTableName(),
-                    'primaryKey' => $this->config->getPrimaryKey(),
-                    'primaryKeyValue' => $primaryKeyValue,
-                ]
-            )
-        ;
+                )
+                ->execute(
+                    [
+                        'leftColumn' => $this->config->getLeftColumn(),
+                        'rightColumn' => $this->config->getRightColumn(),
+                        'tableName' => $this->config->getTableName(),
+                        'nodeColumn' => $this->config->getNodeColumn(),
+                        'nodeColumnValue' => $nodeId,
+                    ]
+                )
+            ;
 
-        $this
-            ->connection
-            ->prepare(
-                <<<SQL
-UPDATE :tableName
-SET :leftColumn = :leftColumn + @myWidth
-WHERE :parentColumn = @myParent 
-    AND :leftColumn >= @myNewLeftPosition
-ORDER BY :leftColumn DESC
+            $this
+                ->connection
+                ->prepare(
+                    <<<SQL
+    DELETE FROM :tableName
+    WHERE :leftColumn BETWEEN @myLeft AND @myRight
 SQL
-            )
-            ->execute(
-                [
-                    'tableName' => $this->config->getTableName(),
-                    'leftColumn' => $this->config->getLeftColumn(),
-                    'parentColumn' => $this->config->getParentColumn(),
-                ]
-            )
-        ;
+                )
+                ->execute(
+                    [
+                        'tableName' => $this->config->getTableName(),
+                        'leftColumn' => $this->config->getLeftColumn(),
+                    ]
+                )
+            ;
 
-        $this
-            ->connection
-            ->prepare(
-                <<<SQL
-UPDATE :tableName
-SET :rightColumn = :rightColumn + @myWidth
-WHERE :parentColumn = @myParent
-    AND :rightColumn >= @myNewLeftPosition
-ORDER BY :rightColumn DESC
+            $this
+                ->connection
+                ->prepare(
+                    <<<SQL
+    UPDATE :tableName
+    SET :rightColumn = :rightColumn - @myWidth
+    WHERE :rightColumn > @myRight
+    ORDER BY :rightColumn ASC
 SQL
-            )
-            ->execute(
-                [
-                    'tableName' => $this->config->getTableName(),
-                    'rightColumn' => $this->config->getRightColumn(),
-                    'parentColumn' => $this->config->getParentColumn(),
-                ]
-            )
-        ;
+                )
+                ->execute(
+                    [
+                        'tableName' => $this->config->getTableName(),
+                        'rightColumn' => $this->config->getRightColumn(),
+                    ]
+                )
+            ;
 
-        $this
-            ->connection
-            ->prepare(
-                <<<SQL
-UPDATE :tableName
-SET :leftColumn = :leftColumn + @distance, :rightColumn = :rightColumn + @distance
-WHERE :parentColumn = @myParent
-    AND :leftColumn >= @tmpLeft
-    AND :rightColumn < @tmpLeft + @myWidth
-ORDER BY :leftColumn ASC
+            $this
+                ->connection
+                ->prepare(
+                    <<<SQL
+    UPDATE :tableName
+    SET :leftColumn = :leftColumn - @myWidth
+    WHERE :leftColumn > @myRight
+    ORDER BY :leftColumn ASC
 SQL
-            )
-            ->execute(
-                [
-                    'tableName' => $this->config->getTableName(),
-                    'leftColumn' => $this->config->getLeftColumn(),
-                    'rightColumn' => $this->config->getRightColumn(),
-                    'parentColumn' => $this->config->getParentColumn(),
-                ]
-            )
-        ;
+                )
+                ->execute(
+                    [
+                        'tableName' => $this->config->getTableName(),
+                        'leftColumn' => $this->config->getLeftColumn(),
+                    ]
+                )
+            ;
 
-        $this
-            ->connection
-            ->prepare(
-                <<<SQL
-UPDATE :tableName
-SET :leftColumn = :leftColumn - @myWidth
-WHERE :parentColumn = @myParent
-    AND :leftColumn > @myRight
-ORDER BY :leftColumn ASC
-SQL
-            )
-            ->execute(
-                [
-                    'tableName' => $this->config->getTableName(),
-                    'leftColumn' => $this->config->getLeftColumn(),
-                    'parentColumn' => $this->config->getParentColumn(),
-                ]
-            )
-        ;
+            $this->connection->commit();
+        } catch (\Throwable $exception) {
+            $this->connection->rollBack();
 
-        $this
-            ->connection
-            ->prepare(
-                <<<SQL
-UPDATE :tableName
-SET :rightColumn = :rightColumn - @myWidth
-WHERE :parentColumn = @myParent
-    AND :rightColumn > @myRight
-ORDER BY :rightColumn ASC
-SQL
-            )
-            ->execute(
-                [
-                    'tableName' => $this->config->getTableName(),
-                    'rightColumn' => $this->config->getRightColumn(),
-                    'parentColumn' => $this->config->getParentColumn(),
-                ]
-            )
-        ;
+            throw $exception;
+        }
 
-        return $this->connection->commit();
-    }
-
-    /** @param mixed $primaryKeyValue */
-    public function deleteNode($primaryKeyValue): bool
-    {
-        $this->connection->beginTransaction();
-
-        $this
-            ->connection
-            ->prepare(
-                <<<SQL
-SELECT @myLeft:=:leftColumn, @myRight:=:rightColumn, @myWidth:=:rightColumn-:leftColumn + 1, @myParent:=:parentColumn
-FROM :tableName
-WHERE :primaryKey = :primaryKeyValue
-SQL
-            )
-            ->execute(
-                [
-                    'leftColumn' => $this->config->getLeftColumn(),
-                    'rightColumn' => $this->config->getRightColumn(),
-                    'parentColumn' => $this->config->getParentColumn(),
-                    'tableName' => $this->config->getTableName(),
-                    'primaryKey' => $this->config->getPrimaryKey(),
-                    'primaryKeyValue' => $primaryKeyValue,
-                ]
-            )
-        ;
-
-        $this
-            ->connection
-            ->prepare(
-                <<<SQL
-DELETE FROM :tableName
-WHERE :parentColumn = @myParent
-    AND :leftColumn BETWEEN @myLeft AND @myRight
-SQL
-            )
-            ->execute(
-                [
-                    'tableName' => $this->config->getTableName(),
-                    'parentColumn' => $this->config->getParentColumn(),
-                    'leftColumn' => $this->config->getLeftColumn(),
-                ]
-            )
-        ;
-
-        $this
-            ->connection
-            ->prepare(
-                <<<SQL
-UPDATE :tableName
-SET :rightColumn = :rightColumn - @myWidth
-WHERE :parentColumn = @myParent
-    AND :rightColumn > @myRight
-ORDER BY :rightColumn ASC
-SQL
-            )
-            ->execute(
-                [
-                    'tableName' => $this->config->getTableName(),
-                    'rightColumn' => $this->config->getRightColumn(),
-                    'parentColumn' => $this->config->getParentColumn(),
-                ]
-            )
-        ;
-
-        $this
-            ->connection
-            ->prepare(
-                <<<SQL
-UPDATE :tableName
-SET :leftColumn = :leftColumn - @myWidth
-WHERE :parentColumn = @myParent
-    AND :leftColumn > @myRight
-ORDER BY :leftColumn ASC
-SQL
-            )
-            ->execute(
-                [
-                    'tableName' => $this->config->getTableName(),
-                    'leftColumn' => $this->config->getLeftColumn(),
-                    'parentColumn' => $this->config->getParentColumn(),
-                ]
-            )
-        ;
-
-        return $this->connection->commit();
-    }
-
-    /**
-     * @param mixed $parentColumnValue
-     *
-     * @return \Generator<array|\stdClass>
-     */
-    public function getFullTree($parentColumnValue): \Generator
-    {
-        $statement = $this->connection->prepare(
-            <<<SQL
-SELECT (COUNT(parent.:primaryKey) - 1) AS depth, node.*
-FROM :tableName AS node, :tableName AS parent
-WHERE node.:parentColumn = :parentColumnValue
-    AND parent.:parentColumn = :parentColumnValue
-    AND node.:leftColumn BETWEEN parent.:leftColumn AND parent.:rightColumn
-GROUP BY node.:primaryKey
-ORDER BY node.:leftColumn;
-SQL
-        );
-
-        $statement->execute(
-            [
-                'tableName' => $this->config->getTableName(),
-                'primaryKey' => $this->config->getPrimaryKey(),
-                'parentColumn' => $this->config->getParentColumn(),
-                'parentColumnValue' => $parentColumnValue,
-                'leftColumn' => $this->config->getLeftColumn(),
-                'rightColumn' => $this->config->getRightColumn(),
-            ]
-        );
-
-        yield $statement->fetch($this->config->getFetchMode());
+        return $this;
     }
 }

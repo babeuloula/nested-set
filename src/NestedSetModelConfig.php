@@ -19,10 +19,7 @@ class NestedSetModelConfig
     protected $fetchMode;
 
     /** @var string */
-    protected $primaryKey;
-
-    /** @var string */
-    protected $parentColumn;
+    protected $nodeColumn;
 
     /** @var string */
     protected $leftColumn;
@@ -33,15 +30,13 @@ class NestedSetModelConfig
     public function __construct(
         string $tableName,
         int $fetchMode = FetchMode::ASSOCIATIVE,
-        string $primaryKey = 'id',
-        string $parentColumn = 'parent',
+        string $nodeColumn = 'id',
         string $leftColumn = 'left_count',
         string $rightColumn = 'right_count'
     ) {
         $this->tableName = $tableName;
         $this->fetchMode = $fetchMode;
-        $this->primaryKey = $primaryKey;
-        $this->parentColumn = $parentColumn;
+        $this->nodeColumn = $nodeColumn;
         $this->leftColumn = $leftColumn;
         $this->rightColumn = $rightColumn;
     }
@@ -70,26 +65,14 @@ class NestedSetModelConfig
         return $this;
     }
 
-    public function getPrimaryKey(): string
+    public function getNodeColumn(): string
     {
-        return $this->primaryKey;
+        return $this->nodeColumn;
     }
 
-    public function setPrimaryKey(string $primaryKey): self
+    public function setNodeColumn(string $nodeColumn): self
     {
-        $this->primaryKey = $primaryKey;
-
-        return $this;
-    }
-
-    public function getParentColumn(): string
-    {
-        return $this->parentColumn;
-    }
-
-    public function setParentColumn(string $parentColumn): self
-    {
-        $this->parentColumn = $parentColumn;
+        $this->nodeColumn = $nodeColumn;
 
         return $this;
     }
