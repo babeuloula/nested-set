@@ -10,13 +10,10 @@ namespace BaBeuloula\NestedSet;
 
 use Doctrine\DBAL\FetchMode;
 
-class NestedSetModelConfig
+class NestedSetConfig
 {
     /** @var string */
     protected $tableName;
-
-    /** @var int */
-    protected $fetchMode;
 
     /** @var string */
     protected $nodeColumn;
@@ -27,18 +24,21 @@ class NestedSetModelConfig
     /** @var string */
     protected $rightColumn;
 
+    /** @var int */
+    protected $fetchMode;
+
     public function __construct(
         string $tableName,
-        int $fetchMode = FetchMode::ASSOCIATIVE,
         string $nodeColumn = 'id',
         string $leftColumn = 'left_count',
-        string $rightColumn = 'right_count'
+        string $rightColumn = 'right_count',
+        int $fetchMode = FetchMode::ASSOCIATIVE
     ) {
         $this->tableName = $tableName;
-        $this->fetchMode = $fetchMode;
         $this->nodeColumn = $nodeColumn;
         $this->leftColumn = $leftColumn;
         $this->rightColumn = $rightColumn;
+        $this->fetchMode = $fetchMode;
     }
 
     public function getTableName(): string
@@ -49,18 +49,6 @@ class NestedSetModelConfig
     public function setTableName(string $tableName): self
     {
         $this->tableName = $tableName;
-
-        return $this;
-    }
-
-    public function getFetchMode(): int
-    {
-        return $this->fetchMode;
-    }
-
-    public function setFetchMode(int $fetchMode): self
-    {
-        $this->fetchMode = $fetchMode;
 
         return $this;
     }
@@ -97,6 +85,18 @@ class NestedSetModelConfig
     public function setRightColumn(string $rightColumn): self
     {
         $this->rightColumn = $rightColumn;
+
+        return $this;
+    }
+
+    public function getFetchMode(): int
+    {
+        return $this->fetchMode;
+    }
+
+    public function setFetchMode(int $fetchMode): self
+    {
+        $this->fetchMode = $fetchMode;
 
         return $this;
     }

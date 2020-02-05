@@ -11,7 +11,7 @@ namespace BaBeuloula\NestedSet;
 use Doctrine\DBAL\Driver\Connection;
 use Doctrine\DBAL\FetchMode;
 
-class NestedSetModel
+class NestedSet
 {
     protected const CHILD_OF_NODE = 'ChildOfNode';
     protected const BEFORE_NODE = 'BeforeNode';
@@ -84,7 +84,7 @@ SQL
     }
 
     /** @return \Generator<array|\stdClass> */
-    public function getFullTree(NestedSetModelConfig $config): \Generator
+    public function getFullTree(NestedSetConfig $config): \Generator
     {
         $statement = $this->connection->prepare(
             <<<SQL
