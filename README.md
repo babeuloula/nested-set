@@ -1,7 +1,18 @@
-# [Nested set model](https://en.wikipedia.org/wiki/Nested_set_model)
+# Nested set
 
-The nested set model is a technique for representing nested sets (also
-known as trees or hierarchies) in relational databases.
+The [nested set model](https://en.wikipedia.org/wiki/Nested_set_model)
+is a technique for representing nested sets (also known as trees or
+hierarchies) in relational databases.
+
+## Example
+
+### A hierarchy: types of clothing:
+
+![example1](hierarchy.png "A hierarchy: types of clothing")
+
+### The numbering assigned by tree traversal:
+
+![example2](numeric.png "The numbering assigned by tree traversal")
 
 ## Installation
 
