@@ -12,6 +12,9 @@ use Doctrine\DBAL\Driver\Connection;
 
 class NestedSetModel
 {
+    protected const CHILD_OF_NODE = 'ChildOfNode';
+    protected const BEFORE_NODE = 'BeforeNode';
+
     /** @var Connection */
     protected $connection;
 
@@ -22,6 +25,11 @@ class NestedSetModel
     {
         $this->connection = $connection;
         $this->config = $config;
+    }
+
+    public function getConnection(): Connection
+    {
+        return $this->connection;
     }
 
     /**
@@ -116,8 +124,23 @@ SQL
         yield $statement->fetch($this->config->getFetchMode());
     }
 
-    public function addNode(): void
+    /**
+     * @param null|mixed $childOfNode
+     * @param null|mixed $beforeNode
+     */
+    public function addNode($childOfNode = null, $beforeNode = null): self
     {
+        if (true === \is_null($childOfNode) && true === \is_null($beforeNode)) {
+            $this->insertNode(0, 1);
+        } elseif (false === \is_null($childOfNode)) {
+            $this->insertChildOfNode($childOfNode);
+        } elseif (false === \is_null($beforeNode)) {
+            $this->insertBeforeNode($beforeNode);
+        } else {
+            throw new \LogicException("You can't set \$childOfNode and \$beforeNode. You need to choose one of them.");
+        }
+
+        return $this;
     }
 
     /** @param mixed $nodeId */
@@ -337,6 +360,183 @@ SQL
 
             throw $exception;
         }
+
+        return $this;
+    }
+
+    protected function insertNode(int $leftColumnValue, int $rightColumnValue): self
+    {
+        try {
+            $this->connection->beginTransaction();
+
+            $this
+                ->connection
+                ->prepare(
+                    <<<SQL
+INSERT INTO :tableName (:leftColumn, :rightColumn)
+VALUES (:leftColumnValue, :rightColumnValue)
+SQL
+                )
+                ->execute(
+                    [
+                        'tableName' => $this->config->getTableName(),
+                        'leftColumn' => $this->config->getLeftColumn(),
+                        'rightColumn' => $this->config->getRightColumn(),
+                        'leftColumnValue' => $leftColumnValue,
+                        'rightColumnValue' => $rightColumnValue,
+                    ]
+                )
+            ;
+
+            $this->connection->commit();
+        } catch (\Throwable $exception) {
+            $this->connection->rollBack();
+
+            throw $exception;
+        }
+
+        return $this;
+    }
+
+    /** @param mixed $childOfNode */
+    protected function insertChildOfNode($childOfNode): self
+    {
+        try {
+            $this->connection->beginTransaction();
+
+            $statement = $this
+                ->connection
+                ->prepare(
+                    <<<SQL
+SELECT @my:=:rightColumn
+FROM :tableName
+WHERE :nodeColumn = :childOfNode
+SQL
+                )
+            ;
+
+            $statement->execute(
+                [
+                    'rightColumn' => $this->config->getRightColumn(),
+                    'tableName' => $this->config->getTableName(),
+                    'nodeColumn' => $this->config->getNodeColumn(),
+                    'childOfNode' => $childOfNode,
+                ]
+            );
+
+            $myRight = $statement->fetchColumn();
+            if (true === \is_bool($myRight)) {
+                $myRight = 0;
+            }
+
+            $this->updateLeftRight((int) $myRight, static::CHILD_OF_NODE);
+
+            $this->connection->commit();
+        } catch (\Throwable $exception) {
+            $this->connection->rollBack();
+
+            throw $exception;
+        }
+
+        return $this;
+    }
+
+    /** @param mixed $beforeNode */
+    protected function insertBeforeNode($beforeNode): self
+    {
+        try {
+            $this->connection->beginTransaction();
+
+            $statement = $this
+                ->connection
+                ->prepare(
+                    <<<SQL
+SELECT @my:=:leftColumn
+FROM :tableName
+WHERE :nodeColumn = :beforeNode
+    AND :leftColumn != 0
+SQL
+                )
+            ;
+
+            $statement->execute(
+                [
+                    'leftColumn' => $this->config->getLeftColumn(),
+                    'tableName' => $this->config->getTableName(),
+                    'nodeColumn' => $this->config->getNodeColumn(),
+                    'beforeNode' => $beforeNode,
+                ]
+            );
+
+            $myLeft = $statement->fetchColumn();
+            if (true === \is_bool($myLeft)) {
+                $myLeft = 0;
+            }
+
+            $this->updateLeftRight((int) $myLeft, static::BEFORE_NODE);
+
+            $this->connection->commit();
+        } catch (\Throwable $exception) {
+            $this->connection->rollBack();
+
+            throw $exception;
+        }
+
+        return $this;
+    }
+
+    protected function updateLeftRight(int $my, string $insertType): self
+    {
+        $this
+            ->connection
+            ->prepare(
+                <<<SQL
+UPDATE :tableName
+SET :rightColumn = :rightColumn + 2
+WHERE :rightColumn >= @my
+ORDER BY :rightColumn DESC
+SQL
+            )
+            ->execute(
+                [
+                    'tableName' => $this->config->getTableName(),
+                    'rightColumn' => $this->config->getRightColumn(),
+                ]
+            )
+        ;
+
+        if (static::CHILD_OF_NODE === $insertType) {
+            $statement = $this
+                ->connection
+                ->prepare(
+                    <<<SQL
+UPDATE :tableName
+SET :leftColumn = :leftColumn + 2
+WHERE :leftColumn > @my
+ORDER BY :leftColumn DESC
+SQL
+                );
+        } else {
+            $statement = $this
+                ->connection
+                ->prepare(
+                    <<<SQL
+UPDATE :tableName
+SET :leftColumn = :leftColumn + 2
+WHERE :leftColumn >= @my
+ORDER BY :leftColumn DESC
+SQL
+                );
+        }
+
+        $statement->execute(
+            [
+                'tableName' => $this->config->getTableName(),
+                'leftColumn' => $this->config->getLeftColumn(),
+            ]
+        );
+
+        $this->insertNode($my, $my + 1);
 
         return $this;
     }
