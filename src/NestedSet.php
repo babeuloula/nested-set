@@ -116,11 +116,11 @@ SQL
         if (false === $childOfNode instanceof NodeEntityInterface
             && false === $beforeNode instanceof NodeEntityInterface
         ) {
-            $this->insertNode($mainNode, 0, 1);
+            $this->updateLeftRightNode($mainNode, 0, 1);
         } elseif (false === \is_null($childOfNode)) {
-            $this->insertChildOfNode($mainNode, $childOfNode);
+            $this->setPositionChildOfNode($mainNode, $childOfNode);
         } elseif (false === \is_null($beforeNode)) {
-            $this->insertBeforeNode($mainNode, $beforeNode);
+            $this->setPositionBeforeNode($mainNode, $beforeNode);
         } else {
             throw new \LogicException("You can't set \$childOfNode and \$beforeNode. You need to choose one of them.");
         }
@@ -268,18 +268,16 @@ SQL
             $this
                 ->connection
                 ->prepare(
-                    <<<SQL
-    SELECT @myLeft:=:leftColumn, @myRight:=:rightColumn, @myWidth:=:rightColumn-:leftColumn + 1
-    FROM :tableName
-    WHERE :nodeColumn = :nodeColumnValue
-SQL
+                    '
+SELECT @myLeft:=`' . $node->getLeftColumn() . '`,
+    @myRight:=`' . $node->getRightColumn() . '`,
+    @myWidth:=`' . $node->getRightColumn() . '`-`' . $node->getLeftColumn() . '` + 1
+FROM `' . $node->getTableName() . '`
+WHERE `' . $node->getNodeColumn() . '` = :nodeColumnValue
+'
                 )
                 ->execute(
                     [
-                        'leftColumn' => $node->getLeftColumn(),
-                        'rightColumn' => $node->getRightColumn(),
-                        'tableName' => $node->getTableName(),
-                        'nodeColumn' => $node->getNodeColumn(),
                         'nodeColumnValue' => $node->getNodeId(),
                     ]
                 )
@@ -288,53 +286,38 @@ SQL
             $this
                 ->connection
                 ->prepare(
-                    <<<SQL
-    DELETE FROM :tableName
-    WHERE :leftColumn BETWEEN @myLeft AND @myRight
-SQL
+                    '
+DELETE FROM `' . $node->getTableName() . '`
+WHERE `' . $node->getLeftColumn() . '` BETWEEN @myLeft AND @myRight
+'
                 )
-                ->execute(
-                    [
-                        'tableName' => $node->getTableName(),
-                        'leftColumn' => $node->getLeftColumn(),
-                    ]
-                )
+                ->execute()
             ;
 
             $this
                 ->connection
                 ->prepare(
-                    <<<SQL
-    UPDATE :tableName
-    SET :rightColumn = :rightColumn - @myWidth
-    WHERE :rightColumn > @myRight
-    ORDER BY :rightColumn ASC
-SQL
+                    '
+    UPDATE `' . $node->getTableName() . '`
+    SET `' . $node->getRightColumn() . '` = `' . $node->getRightColumn() . '` - @myWidth
+    WHERE `' . $node->getRightColumn() . '` > @myRight
+    ORDER BY `' . $node->getRightColumn() . '` ASC
+'
                 )
-                ->execute(
-                    [
-                        'tableName' => $node->getTableName(),
-                        'rightColumn' => $node->getRightColumn(),
-                    ]
-                )
+                ->execute()
             ;
 
             $this
                 ->connection
                 ->prepare(
-                    <<<SQL
-    UPDATE :tableName
-    SET :leftColumn = :leftColumn - @myWidth
-    WHERE :leftColumn > @myRight
-    ORDER BY :leftColumn ASC
-SQL
+                    '
+    UPDATE `' . $node->getTableName() . '`
+    SET `' . $node->getLeftColumn() . '` = `' . $node->getLeftColumn() . '` - @myWidth
+    WHERE `' . $node->getLeftColumn() . '` > @myRight
+    ORDER BY `' . $node->getLeftColumn() . '` ASC
+'
                 )
-                ->execute(
-                    [
-                        'tableName' => $node->getTableName(),
-                        'leftColumn' => $node->getLeftColumn(),
-                    ]
-                )
+                ->execute()
             ;
 
             $this->connection->commit();
@@ -347,9 +330,9 @@ SQL
         return $this;
     }
 
-    protected function insertNode(NodeEntityInterface $mainNode, int $leftColumnValue, int $rightColumnValue): self
+    protected function updateLeftRightNode(NodeEntityInterface $node, int $leftColumnValue, int $rightColumnValue): self
     {
-        $mainNode
+        $node
             ->setLeft($leftColumnValue)
             ->setRight($rightColumnValue)
         ;
@@ -357,7 +340,7 @@ SQL
         return $this;
     }
 
-    protected function insertChildOfNode(NodeEntityInterface $mainNode, NodeEntityInterface $childOfNode): self
+    protected function setPositionChildOfNode(NodeEntityInterface $mainNode, NodeEntityInterface $childOfNode): self
     {
         try {
             $this->connection->beginTransaction();
@@ -365,19 +348,16 @@ SQL
             $statement = $this
                 ->connection
                 ->prepare(
-                    <<<SQL
-SELECT @my:=:rightColumn
-FROM :tableName
-WHERE :nodeColumn = :childOfNode
-SQL
+                    '
+SELECT @my:=`' . $childOfNode->getRightColumn() . '`
+FROM `' . $childOfNode->getTableName() . '`
+WHERE `' . $childOfNode->getNodeColumn() . '` = :childOfNode
+'
                 )
             ;
 
             $statement->execute(
                 [
-                    'rightColumn' => $childOfNode->getRightColumn(),
-                    'tableName' => $childOfNode->getTableName(),
-                    'nodeColumn' => $childOfNode->getNodeColumn(),
                     'childOfNode' => $childOfNode->getNodeId(),
                 ]
             );
@@ -387,7 +367,12 @@ SQL
                 $myRight = 0;
             }
 
-            $this->updateLeftRight($mainNode, (int) $myRight, static::CHILD_OF_NODE);
+            $this->updateNodes($mainNode, (int) $myRight, static::CHILD_OF_NODE);
+            $this->updateLeftRightNode(
+                $childOfNode,
+                $mainNode->getLeft() - 1,
+                $mainNode->getRight() + 1
+            );
 
             $this->connection->commit();
         } catch (\Throwable $exception) {
@@ -399,7 +384,7 @@ SQL
         return $this;
     }
 
-    protected function insertBeforeNode(NodeEntityInterface $mainNode, NodeEntityInterface $beforeNode): self
+    protected function setPositionBeforeNode(NodeEntityInterface $mainNode, NodeEntityInterface $beforeNode): self
     {
         try {
             $this->connection->beginTransaction();
@@ -407,20 +392,17 @@ SQL
             $statement = $this
                 ->connection
                 ->prepare(
-                    <<<SQL
-SELECT @my:=:leftColumn
-FROM :tableName
-WHERE :nodeColumn = :beforeNode
-    AND :leftColumn != 0
-SQL
+                    '
+SELECT @my:=`' . $beforeNode->getLeftColumn() . '`
+FROM `' . $beforeNode->getTableName() . '`
+WHERE `' . $beforeNode->getNodeColumn() . '` = :beforeNode
+    AND `' . $beforeNode->getLeftColumn() . '` != 0
+'
                 )
             ;
 
             $statement->execute(
                 [
-                    'leftColumn' => $beforeNode->getLeftColumn(),
-                    'tableName' => $beforeNode->getTableName(),
-                    'nodeColumn' => $beforeNode->getNodeColumn(),
                     'beforeNode' => $beforeNode->getNodeId(),
                 ]
             );
@@ -430,7 +412,12 @@ SQL
                 $myLeft = 0;
             }
 
-            $this->updateLeftRight($mainNode, (int) $myLeft, static::BEFORE_NODE);
+            $this->updateNodes($mainNode, (int) $myLeft, static::BEFORE_NODE);
+            $this->updateLeftRightNode(
+                $beforeNode,
+                $mainNode->getLeft() - 1,
+                $mainNode->getRight() + 1
+            );
 
             $this->connection->commit();
         } catch (\Throwable $exception) {
@@ -442,58 +429,48 @@ SQL
         return $this;
     }
 
-    protected function updateLeftRight(NodeEntityInterface $mainNode, int $my, string $insertType): self
+    protected function updateNodes(NodeEntityInterface $mainNode, int $my, string $insertType): self
     {
         $this
             ->connection
             ->prepare(
-                <<<SQL
-UPDATE :tableName
-SET :rightColumn = :rightColumn + 2
-WHERE :rightColumn >= @my
-ORDER BY :rightColumn DESC
-SQL
+                '
+UPDATE `' . $mainNode->getTableName() . '`
+SET `' . $mainNode->getRightColumn() . '` = `' . $mainNode->getRightColumn() . '` + 2
+WHERE `' . $mainNode->getRightColumn() . '` >= @my
+ORDER BY `' . $mainNode->getRightColumn() . '` DESC
+'
             )
-            ->execute(
-                [
-                    'tableName' => $mainNode->getTableName(),
-                    'rightColumn' => $mainNode->getRightColumn(),
-                ]
-            )
+            ->execute()
         ;
 
         if (static::CHILD_OF_NODE === $insertType) {
             $statement = $this
                 ->connection
                 ->prepare(
-                    <<<SQL
-UPDATE :tableName
-SET :leftColumn = :leftColumn + 2
-WHERE :leftColumn > @my
-ORDER BY :leftColumn DESC
-SQL
+                    '
+UPDATE `' . $mainNode->getTableName() . '`
+SET `' . $mainNode->getLeftColumn() . '` = `' . $mainNode->getLeftColumn() . '` + 2
+WHERE `' . $mainNode->getLeftColumn() . '` > @my
+ORDER BY `' . $mainNode->getLeftColumn() . '` DESC
+'
                 );
         } else {
             $statement = $this
                 ->connection
                 ->prepare(
-                    <<<SQL
-UPDATE :tableName
-SET :leftColumn = :leftColumn + 2
-WHERE :leftColumn >= @my
-ORDER BY :leftColumn DESC
-SQL
+                    '
+UPDATE `' . $mainNode->getTableName() . '`
+SET `' . $mainNode->getLeftColumn() . '` = `' . $mainNode->getLeftColumn() . '` + 2
+WHERE `' . $mainNode->getLeftColumn() . '` >= @my
+ORDER BY `' . $mainNode->getLeftColumn() . '` DESC
+'
                 );
         }
 
-        $statement->execute(
-            [
-                'tableName' => $mainNode->getTableName(),
-                'leftColumn' => $mainNode->getLeftColumn(),
-            ]
-        );
+        $statement->execute();
 
-        $this->insertNode($mainNode, $my, $my + 1);
+        $this->updateLeftRightNode($mainNode, $my, $my + 1);
 
         return $this;
     }

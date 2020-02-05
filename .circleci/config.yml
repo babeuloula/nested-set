@@ -43,6 +43,20 @@ commands:
                   paths:
                       - vendor
 
+    wait-mysql:
+        description: "Wait MySQL"
+        step:
+            - run:
+                  name: "Waiting for MySQL to be ready"
+                  command: |
+                      for i in `seq 1 10`;
+                      do
+                          nc -z 127.0.0.1 3306 && echo Success && exit 0
+                          echo -n .
+                          sleep 1
+                      done
+                      echo Failed waiting for MySQL && exit 1
+
     phpcs:
         description: "Execute PHPCS"
         steps:
@@ -57,10 +71,28 @@ commands:
                   name: "Execute: make stan"
                   command: make stan
 
+    phpunit:
+        description: "Execute PHPUnit"
+        steps:
+            - run:
+                  name: "Execute: make phpunit"
+                  command: make phpunit
+
 executors:
     php:
         docker:
             - image: php:7.1-alpine
+        working_directory: ~/repository
+
+    php_mysql:
+        docker:
+            - image: php:7.1-alpine
+            - image: mysql:5.7
+              environment:
+                  MYSQL_ROOT_PASSWORD: nested_set
+                  MYSQL_DATABASE: nested_set
+                  MYSQL_USER: nested_set
+                  MYSQL_PASSWORD: nested_set
         working_directory: ~/repository
 
 jobs:
@@ -83,12 +115,13 @@ jobs:
             - restore-composer-cache
             - phpstan
 
-    doctrine_schema_validate:
-        executor: php
+    phpunit:
+        executor: php_mysql
         steps:
             - checkout-alpine
             - restore-composer-cache
-            - doctrine_schema_validate
+            - wait-mysql
+            - phpunit
 
 workflows:
     version: 2.1
@@ -99,5 +132,8 @@ workflows:
                   requires:
                       - composer
             - phpstan:
+                  requires:
+                      - composer
+            - phpunit:
                   requires:
                       - composer

@@ -19,6 +19,11 @@ interface NodeEntityInterface
     public function getLeftColumn(): string;
     public function getRightColumn(): string;
 
-    public function setLeft(int $left): self;
-    public function setRight(int $right): self;
+    /** @return self */
+    public function setLeft(int $left);
+    public function getLeft(): ?int;
+
+    /** @return self */
+    public function setRight(int $right);
+    public function getRight(): ?int;
 }

@@ -2,7 +2,7 @@
 
 set -e
 
-echo "COMPOSE_PROJECT_NAME=nested_set_model_test" > .env
+echo "COMPOSE_PROJECT_NAME=nested_set_test" > .env
 echo "DOCKER_UID=${UID}" >> .env
 
 docker-compose stop
