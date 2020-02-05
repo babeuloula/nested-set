@@ -45,7 +45,7 @@ commands:
 
     wait-mysql:
         description: "Wait MySQL"
-        step:
+        steps:
             - run:
                   name: "Waiting for MySQL to be ready"
                   command: |
