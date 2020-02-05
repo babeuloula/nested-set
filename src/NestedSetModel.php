@@ -6,9 +6,10 @@
 
 declare(strict_types=1);
 
-namespace BaBeuloula;
+namespace BaBeuloula\NestedSet;
 
 use Doctrine\DBAL\Driver\Connection;
+use Doctrine\DBAL\FetchMode;
 
 class NestedSetModel
 {
@@ -18,26 +19,13 @@ class NestedSetModel
     /** @var Connection */
     protected $connection;
 
-    /** @var NestedSetModelConfig */
-    protected $config;
-
-    public function __construct(Connection $connection, NestedSetModelConfig $config)
+    public function __construct(Connection $connection)
     {
         $this->connection = $connection;
-        $this->config = $config;
     }
 
-    public function getConnection(): Connection
-    {
-        return $this->connection;
-    }
-
-    /**
-     * @param mixed $nodeId
-     *
-     * @return \Generator<array|\stdClass>
-     */
-    public function getSiblings($nodeId): \Generator
+    /** @return \Generator<array|\stdClass> */
+    public function getSiblings(NodeEntityInterface $node, int $fetchMode = FetchMode::ASSOCIATIVE): \Generator
     {
         $statement = $this->connection->prepare(
             <<<SQL
@@ -56,23 +44,19 @@ SQL
         );
         $statement->execute(
             [
-                'tableName' => $this->config->getTableName(),
-                'leftColumn' => $this->config->getLeftColumn(),
-                'rightColumn' => $this->config->getRightColumn(),
-                'nodeColumn' => $this->config->getNodeColumn(),
-                'nodeColumnValue' => $nodeId,
+                'tableName' => $node->getTableName(),
+                'leftColumn' => $node->getLeftColumn(),
+                'rightColumn' => $node->getRightColumn(),
+                'nodeColumn' => $node->getNodeColumn(),
+                'nodeColumnValue' => $node->getNodeId(),
             ]
         );
 
-        yield $statement->fetch($this->config->getFetchMode());
+        yield $statement->fetch($fetchMode);
     }
 
-    /**
-     * @param mixed $nodeId
-     *
-     * @return \Generator<array|\stdClass>
-     */
-    public function getAncestors($nodeId): \Generator
+    /** @return \Generator<array|\stdClass> */
+    public function getAncestors(NodeEntityInterface $node, int $fetchMode = FetchMode::ASSOCIATIVE): \Generator
     {
         $statement = $this->connection->prepare(
             <<<SQL
@@ -88,19 +72,19 @@ SQL
 
         $statement->execute(
             [
-                'tableName' => $this->config->getTableName(),
-                'leftColumn' => $this->config->getLeftColumn(),
-                'rightColumn' => $this->config->getRightColumn(),
-                'nodeColumn' => $this->config->getNodeColumn(),
-                'nodeColumnValue' => $nodeId,
+                'tableName' => $node->getTableName(),
+                'leftColumn' => $node->getLeftColumn(),
+                'rightColumn' => $node->getRightColumn(),
+                'nodeColumn' => $node->getNodeColumn(),
+                'nodeColumnValue' => $node->getNodeId(),
             ]
         );
 
-        yield $statement->fetch($this->config->getFetchMode());
+        yield $statement->fetch($fetchMode);
     }
 
     /** @return \Generator<array|\stdClass> */
-    public function getFullTree(): \Generator
+    public function getFullTree(NestedSetModelConfig $config): \Generator
     {
         $statement = $this->connection->prepare(
             <<<SQL
@@ -114,28 +98,29 @@ SQL
 
         $statement->execute(
             [
-                'tableName' => $this->config->getTableName(),
-                'nodeColumn' => $this->config->getNodeColumn(),
-                'leftColumn' => $this->config->getLeftColumn(),
-                'rightColumn' => $this->config->getRightColumn(),
+                'tableName' => $config->getTableName(),
+                'nodeColumn' => $config->getNodeColumn(),
+                'leftColumn' => $config->getLeftColumn(),
+                'rightColumn' => $config->getRightColumn(),
             ]
         );
 
-        yield $statement->fetch($this->config->getFetchMode());
+        yield $statement->fetch($config->getFetchMode());
     }
 
-    /**
-     * @param null|mixed $childOfNode
-     * @param null|mixed $beforeNode
-     */
-    public function addNode($childOfNode = null, $beforeNode = null): self
-    {
-        if (true === \is_null($childOfNode) && true === \is_null($beforeNode)) {
-            $this->insertNode(0, 1);
+    public function addNode(
+        NodeEntityInterface $mainNode,
+        NodeEntityInterface $childOfNode = null,
+        NodeEntityInterface $beforeNode = null
+    ): self {
+        if (false === $childOfNode instanceof NodeEntityInterface
+            && false === $beforeNode instanceof NodeEntityInterface
+        ) {
+            $this->insertNode($mainNode, 0, 1);
         } elseif (false === \is_null($childOfNode)) {
-            $this->insertChildOfNode($childOfNode);
+            $this->insertChildOfNode($mainNode, $childOfNode);
         } elseif (false === \is_null($beforeNode)) {
-            $this->insertBeforeNode($beforeNode);
+            $this->insertBeforeNode($mainNode, $beforeNode);
         } else {
             throw new \LogicException("You can't set \$childOfNode and \$beforeNode. You need to choose one of them.");
         }
@@ -143,8 +128,7 @@ SQL
         return $this;
     }
 
-    /** @param mixed $nodeId */
-    public function moveNode($nodeId, int $newLeftPosition): self
+    public function moveNode(NodeEntityInterface $node, int $newLeftPosition): self
     {
         try {
             $this->connection->beginTransaction();
@@ -164,12 +148,12 @@ SQL
                 )
                 ->execute(
                     [
-                        'leftColumn' => $this->config->getLeftColumn(),
-                        'rightColumn' => $this->config->getRightColumn(),
+                        'leftColumn' => $node->getLeftColumn(),
+                        'rightColumn' => $node->getRightColumn(),
                         'newLeftPosition' => $newLeftPosition,
-                        'tableName' => $this->config->getTableName(),
-                        'nodeColumn' => $this->config->getNodeColumn(),
-                        'nodeColumnValue' => $nodeId,
+                        'tableName' => $node->getTableName(),
+                        'nodeColumn' => $node->getNodeColumn(),
+                        'nodeColumnValue' => $node->getNodeId(),
                     ]
                 )
             ;
@@ -186,8 +170,8 @@ SQL
                 )
                 ->execute(
                     [
-                        'tableName' => $this->config->getTableName(),
-                        'leftColumn' => $this->config->getLeftColumn(),
+                        'tableName' => $node->getTableName(),
+                        'leftColumn' => $node->getLeftColumn(),
                     ]
                 )
             ;
@@ -204,8 +188,8 @@ SQL
                 )
                 ->execute(
                     [
-                        'tableName' => $this->config->getTableName(),
-                        'rightColumn' => $this->config->getRightColumn(),
+                        'tableName' => $node->getTableName(),
+                        'rightColumn' => $node->getRightColumn(),
                     ]
                 )
             ;
@@ -223,9 +207,9 @@ SQL
                 )
                 ->execute(
                     [
-                        'tableName' => $this->config->getTableName(),
-                        'leftColumn' => $this->config->getLeftColumn(),
-                        'rightColumn' => $this->config->getRightColumn(),
+                        'tableName' => $node->getTableName(),
+                        'leftColumn' => $node->getLeftColumn(),
+                        'rightColumn' => $node->getRightColumn(),
                     ]
                 )
             ;
@@ -242,8 +226,8 @@ SQL
                 )
                 ->execute(
                     [
-                        'tableName' => $this->config->getTableName(),
-                        'leftColumn' => $this->config->getLeftColumn(),
+                        'tableName' => $node->getTableName(),
+                        'leftColumn' => $node->getLeftColumn(),
                     ]
                 )
             ;
@@ -260,8 +244,8 @@ SQL
                 )
                 ->execute(
                     [
-                        'tableName' => $this->config->getTableName(),
-                        'rightColumn' => $this->config->getRightColumn(),
+                        'tableName' => $node->getTableName(),
+                        'rightColumn' => $node->getRightColumn(),
                     ]
                 )
             ;
@@ -276,8 +260,7 @@ SQL
         return $this;
     }
 
-    /** @param mixed $nodeId */
-    public function deleteNode($nodeId): self
+    public function deleteNode(NodeEntityInterface $node): self
     {
         try {
             $this->connection->beginTransaction();
@@ -293,11 +276,11 @@ SQL
                 )
                 ->execute(
                     [
-                        'leftColumn' => $this->config->getLeftColumn(),
-                        'rightColumn' => $this->config->getRightColumn(),
-                        'tableName' => $this->config->getTableName(),
-                        'nodeColumn' => $this->config->getNodeColumn(),
-                        'nodeColumnValue' => $nodeId,
+                        'leftColumn' => $node->getLeftColumn(),
+                        'rightColumn' => $node->getRightColumn(),
+                        'tableName' => $node->getTableName(),
+                        'nodeColumn' => $node->getNodeColumn(),
+                        'nodeColumnValue' => $node->getNodeId(),
                     ]
                 )
             ;
@@ -312,8 +295,8 @@ SQL
                 )
                 ->execute(
                     [
-                        'tableName' => $this->config->getTableName(),
-                        'leftColumn' => $this->config->getLeftColumn(),
+                        'tableName' => $node->getTableName(),
+                        'leftColumn' => $node->getLeftColumn(),
                     ]
                 )
             ;
@@ -330,8 +313,8 @@ SQL
                 )
                 ->execute(
                     [
-                        'tableName' => $this->config->getTableName(),
-                        'rightColumn' => $this->config->getRightColumn(),
+                        'tableName' => $node->getTableName(),
+                        'rightColumn' => $node->getRightColumn(),
                     ]
                 )
             ;
@@ -348,8 +331,8 @@ SQL
                 )
                 ->execute(
                     [
-                        'tableName' => $this->config->getTableName(),
-                        'leftColumn' => $this->config->getLeftColumn(),
+                        'tableName' => $node->getTableName(),
+                        'leftColumn' => $node->getLeftColumn(),
                     ]
                 )
             ;
@@ -364,42 +347,17 @@ SQL
         return $this;
     }
 
-    protected function insertNode(int $leftColumnValue, int $rightColumnValue): self
+    protected function insertNode(NodeEntityInterface $mainNode, int $leftColumnValue, int $rightColumnValue): self
     {
-        try {
-            $this->connection->beginTransaction();
-
-            $this
-                ->connection
-                ->prepare(
-                    <<<SQL
-INSERT INTO :tableName (:leftColumn, :rightColumn)
-VALUES (:leftColumnValue, :rightColumnValue)
-SQL
-                )
-                ->execute(
-                    [
-                        'tableName' => $this->config->getTableName(),
-                        'leftColumn' => $this->config->getLeftColumn(),
-                        'rightColumn' => $this->config->getRightColumn(),
-                        'leftColumnValue' => $leftColumnValue,
-                        'rightColumnValue' => $rightColumnValue,
-                    ]
-                )
-            ;
-
-            $this->connection->commit();
-        } catch (\Throwable $exception) {
-            $this->connection->rollBack();
-
-            throw $exception;
-        }
+        $mainNode
+            ->setLeft($leftColumnValue)
+            ->setRight($rightColumnValue)
+        ;
 
         return $this;
     }
 
-    /** @param mixed $childOfNode */
-    protected function insertChildOfNode($childOfNode): self
+    protected function insertChildOfNode(NodeEntityInterface $mainNode, NodeEntityInterface $childOfNode): self
     {
         try {
             $this->connection->beginTransaction();
@@ -417,10 +375,10 @@ SQL
 
             $statement->execute(
                 [
-                    'rightColumn' => $this->config->getRightColumn(),
-                    'tableName' => $this->config->getTableName(),
-                    'nodeColumn' => $this->config->getNodeColumn(),
-                    'childOfNode' => $childOfNode,
+                    'rightColumn' => $childOfNode->getRightColumn(),
+                    'tableName' => $childOfNode->getTableName(),
+                    'nodeColumn' => $childOfNode->getNodeColumn(),
+                    'childOfNode' => $childOfNode->getNodeId(),
                 ]
             );
 
@@ -429,7 +387,7 @@ SQL
                 $myRight = 0;
             }
 
-            $this->updateLeftRight((int) $myRight, static::CHILD_OF_NODE);
+            $this->updateLeftRight($mainNode, (int) $myRight, static::CHILD_OF_NODE);
 
             $this->connection->commit();
         } catch (\Throwable $exception) {
@@ -441,8 +399,7 @@ SQL
         return $this;
     }
 
-    /** @param mixed $beforeNode */
-    protected function insertBeforeNode($beforeNode): self
+    protected function insertBeforeNode(NodeEntityInterface $mainNode, NodeEntityInterface $beforeNode): self
     {
         try {
             $this->connection->beginTransaction();
@@ -461,10 +418,10 @@ SQL
 
             $statement->execute(
                 [
-                    'leftColumn' => $this->config->getLeftColumn(),
-                    'tableName' => $this->config->getTableName(),
-                    'nodeColumn' => $this->config->getNodeColumn(),
-                    'beforeNode' => $beforeNode,
+                    'leftColumn' => $beforeNode->getLeftColumn(),
+                    'tableName' => $beforeNode->getTableName(),
+                    'nodeColumn' => $beforeNode->getNodeColumn(),
+                    'beforeNode' => $beforeNode->getNodeId(),
                 ]
             );
 
@@ -473,7 +430,7 @@ SQL
                 $myLeft = 0;
             }
 
-            $this->updateLeftRight((int) $myLeft, static::BEFORE_NODE);
+            $this->updateLeftRight($mainNode, (int) $myLeft, static::BEFORE_NODE);
 
             $this->connection->commit();
         } catch (\Throwable $exception) {
@@ -485,7 +442,7 @@ SQL
         return $this;
     }
 
-    protected function updateLeftRight(int $my, string $insertType): self
+    protected function updateLeftRight(NodeEntityInterface $mainNode, int $my, string $insertType): self
     {
         $this
             ->connection
@@ -499,8 +456,8 @@ SQL
             )
             ->execute(
                 [
-                    'tableName' => $this->config->getTableName(),
-                    'rightColumn' => $this->config->getRightColumn(),
+                    'tableName' => $mainNode->getTableName(),
+                    'rightColumn' => $mainNode->getRightColumn(),
                 ]
             )
         ;
@@ -531,12 +488,12 @@ SQL
 
         $statement->execute(
             [
-                'tableName' => $this->config->getTableName(),
-                'leftColumn' => $this->config->getLeftColumn(),
+                'tableName' => $mainNode->getTableName(),
+                'leftColumn' => $mainNode->getLeftColumn(),
             ]
         );
 
-        $this->insertNode($my, $my + 1);
+        $this->insertNode($mainNode, $my, $my + 1);
 
         return $this;
     }

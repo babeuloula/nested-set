@@ -6,7 +6,7 @@
 
 declare(strict_types=1);
 
-namespace BaBeuloula;
+namespace BaBeuloula\NestedSet;
 
 use Doctrine\DBAL\FetchMode;
 
