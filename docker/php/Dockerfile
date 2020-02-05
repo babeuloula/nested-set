@@ -12,7 +12,7 @@ RUN \
         wget \
         zlib-dev \
         libzip-dev \
-    && docker-php-ext-install zip
+    && docker-php-ext-install zip pdo_mysql
 
 RUN \
     curl -sl https://getcomposer.org/composer.phar -o /usr/local/bin/composer; \

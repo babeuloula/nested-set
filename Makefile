@@ -8,4 +8,7 @@ phpcs:
 	./vendor/bin/phpcs
 
 stan:
-	./vendor/bin/phpstan analyse src --level max
+	./vendor/bin/phpstan analyse src tests --level max
+
+phpunit:
+	./vendor/bin/phpunit ./tests

@@ -18,11 +18,17 @@
     },
     "require-dev": {
         "babeuloula/phpcs": "^1.2",
-        "phpstan/phpstan": "^0.12.8"
+        "phpstan/phpstan": "^0.12.8",
+        "phpunit/phpunit": "^7.5"
     },
     "autoload": {
         "psr-4": {
             "BaBeuloula\\NestedSet\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "BaBeuloula\\Test\\NestedSet\\": "tests/"
         }
     },
     "config": {

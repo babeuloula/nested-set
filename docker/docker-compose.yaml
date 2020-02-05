@@ -10,3 +10,16 @@ services:
         volumes:
             - ..:/var/www/html
         restart: "no"
+
+    mysql:
+        image: mysql:5.7
+        restart: "no"
+        environment:
+            MYSQL_ROOT_PASSWORD: "nested_set"
+            MYSQL_DATABASE: "nested_set"
+            MYSQL_USER: "nested_set"
+            MYSQL_PASSWORD: "nested_set"
+        tmpfs:
+            - /var/lib/mysql
+        ports:
+            - "3310:3306"

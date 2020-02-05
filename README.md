@@ -26,3 +26,7 @@ the PHP container.
 ### Code quality
 
 You can run a code quality check with `make phpcs` and `make phpstan`.
+
+### Unit test
+
+You can run PHPunit tests suite with `make phpunit`.
