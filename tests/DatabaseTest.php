@@ -66,8 +66,7 @@ CREATE TABLE IF NOT EXISTS `' . static::TABLE_NAME . '` (
   `' . static::RIGHT_COLUMN . '` INT UNSIGNED NULL,
   PRIMARY KEY (`' . static::NODE_COLUMN . '`),
   UNIQUE INDEX `id_UNIQUE` (`' . static::NODE_COLUMN . '` ASC),
-  UNIQUE INDEX `left_count_UNIQUE` (`' . static::LEFT_COLUMN . '` ASC),
-  UNIQUE INDEX `right_count_UNIQUE` (`' . static::RIGHT_COLUMN . '` ASC))
+  UNIQUE INDEX `left_right_count_UNIQUE` (`' . static::LEFT_COLUMN . '` ASC, `' . static::RIGHT_COLUMN . '` ASC))
 ENGINE = InnoDB;
 '
             )

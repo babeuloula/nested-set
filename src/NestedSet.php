@@ -116,7 +116,7 @@ SQL
         if (false === $childOfNode instanceof NodeEntityInterface
             && false === $beforeNode instanceof NodeEntityInterface
         ) {
-            $this->updateLeftRightNode($mainNode, 0, 1);
+            $this->updateLeftRightNode($mainNode, 1, 2);
         } elseif (false === \is_null($childOfNode)) {
             $this->setPositionChildOfNode($mainNode, $childOfNode);
         } elseif (false === \is_null($beforeNode)) {
@@ -271,7 +271,7 @@ SQL
                     '
 SELECT @myLeft:=`' . $node->getLeftColumn() . '`,
     @myRight:=`' . $node->getRightColumn() . '`,
-    @myWidth:=`' . $node->getRightColumn() . '`-`' . $node->getLeftColumn() . '` + 1
+    @myWidth:=`' . $node->getRightColumn() . '`-`' . $node->getLeftColumn() . '`
 FROM `' . $node->getTableName() . '`
 WHERE `' . $node->getNodeColumn() . '` = :nodeColumnValue
 '
@@ -299,7 +299,7 @@ WHERE `' . $node->getLeftColumn() . '` BETWEEN @myLeft AND @myRight
                 ->prepare(
                     '
     UPDATE `' . $node->getTableName() . '`
-    SET `' . $node->getRightColumn() . '` = `' . $node->getRightColumn() . '` - @myWidth
+    SET `' . $node->getRightColumn() . '` = `' . $node->getRightColumn() . '` - (@myWidth + 1)
     WHERE `' . $node->getRightColumn() . '` > @myRight
     ORDER BY `' . $node->getRightColumn() . '` ASC
 '
