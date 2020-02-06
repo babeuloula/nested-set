@@ -43,6 +43,13 @@ commands:
                   paths:
                       - vendor
 
+    install-php-requirements:
+        description: "Install PHP requirements"
+        steps:
+            - run:
+                  name: "Install PDO"
+                  command: sudo docker-php-ext-install pdo_mysql
+
     wait-mysql:
         description: "Wait MySQL"
         steps:
@@ -93,6 +100,7 @@ executors:
                   MYSQL_DATABASE: nested_set
                   MYSQL_USER: nested_set
                   MYSQL_PASSWORD: nested_set
+                  MYSQL_DOCKER_HOST: 127.0.0.1
         working_directory: ~/repository
 
 jobs:
@@ -120,6 +128,7 @@ jobs:
         steps:
             - checkout-alpine
             - restore-composer-cache
+            - install-php-requirements
             - wait-mysql
             - phpunit
 

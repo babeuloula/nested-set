@@ -7,6 +7,7 @@ services:
             dockerfile: docker/php/Dockerfile
             args:
                 UID: "${DOCKER_UID}"
+        env_file: .env.test
         volumes:
             - ..:/var/www/html
         restart: "no"
@@ -14,11 +15,7 @@ services:
     mysql:
         image: mysql:5.7
         restart: "no"
-        environment:
-            MYSQL_ROOT_PASSWORD: "nested_set"
-            MYSQL_DATABASE: "nested_set"
-            MYSQL_USER: "nested_set"
-            MYSQL_PASSWORD: "nested_set"
+        env_file: .env.test
         tmpfs:
             - /var/lib/mysql
         ports:

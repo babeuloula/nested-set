@@ -42,10 +42,10 @@ abstract class DatabaseTest extends TestCase
 
         $this->connection = DriverManager::getConnection(
             [
-                'dbname' => 'nested_set',
-                'user' => 'nested_set',
-                'password' => 'nested_set',
-                'host' => 'mysql',
+                'dbname' => getenv('MYSQL_DATABASE'),
+                'user' => getenv('MYSQL_USER'),
+                'password' => getenv('MYSQL_PASSWORD'),
+                'host' => getenv('MYSQL_DOCKER_HOST'),
                 'driver' => 'pdo_mysql',
             ]
         );
