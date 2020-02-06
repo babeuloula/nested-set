@@ -48,7 +48,7 @@ commands:
         steps:
             - run:
                   name: "Install PDO"
-                  command: sudo docker-php-ext-install pdo_mysql
+                  command: docker-php-ext-install pdo pdo_mysql
 
     wait-mysql:
         description: "Wait MySQL"
@@ -58,7 +58,7 @@ commands:
                   command: |
                       for i in `seq 1 10`;
                       do
-                          nc -z 127.0.0.1 3306 && echo Success && exit 0
+                          nc -z mysql 3306 && echo Success && exit 0
                           echo -n .
                           sleep 1
                       done
@@ -95,12 +95,12 @@ executors:
         docker:
             - image: php:7.1-alpine
             - image: mysql:5.7
+              name: mysql
               environment:
                   MYSQL_ROOT_PASSWORD: nested_set
                   MYSQL_DATABASE: nested_set
                   MYSQL_USER: nested_set
                   MYSQL_PASSWORD: nested_set
-                  MYSQL_DOCKER_HOST: 127.0.0.1
         working_directory: ~/repository
 
 jobs:
