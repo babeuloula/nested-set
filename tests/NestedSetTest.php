@@ -12,6 +12,45 @@ use BaBeuloula\NestedSet\NestedSet;
 
 class NestedSetTest extends DatabaseTest
 {
+    /** @var FooNode */
+    protected $clothingNode;
+
+    /** @var NestedSet */
+    protected $nestedSet;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this
+            ->connection
+            ->prepare(
+                '
+DROP TABLE IF EXISTS `' . static::TABLE_NAME . '`;
+
+CREATE TABLE IF NOT EXISTS `' . static::TABLE_NAME . '` (
+  `' . static::NODE_COLUMN . '` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `' . static::NAME_COLUMN . '` VARCHAR(255) NULL,
+  `' . static::LEFT_COLUMN . '` INT UNSIGNED NULL,
+  `' . static::RIGHT_COLUMN . '` INT UNSIGNED NULL,
+  PRIMARY KEY (`' . static::NODE_COLUMN . '`),
+  UNIQUE INDEX `id_UNIQUE` (`' . static::NODE_COLUMN . '` ASC),
+  UNIQUE INDEX `left_right_count_UNIQUE` (`' . static::LEFT_COLUMN . '` ASC, `' . static::RIGHT_COLUMN . '` ASC))
+ENGINE = InnoDB;
+'
+            )
+            ->execute()
+        ;
+
+        $this->clothingNode = new FooNode();
+        $this->clothingNode->setName("Clothing");
+
+        $this->nestedSet = new NestedSet($this->connection);
+
+        $this->nestedSet->addNode($this->clothingNode);
+        $this->save($this->clothingNode);
+    }
+
     /**
      * @covers NestedSet::__construct
      * @covers NestedSet::addNode
@@ -19,11 +58,9 @@ class NestedSetTest extends DatabaseTest
      */
     public function testAddFirstNode(): void
     {
-        $clothingNode = $this->createFirstNode();
-
-        static::assertSame(1, $clothingNode->getNodeId());
-        static::assertSame(1, $clothingNode->getLeft());
-        static::assertSame(2, $clothingNode->getRight());
+        static::assertSame(1, $this->clothingNode->getNodeId());
+        static::assertSame(1, $this->clothingNode->getLeft());
+        static::assertSame(2, $this->clothingNode->getRight());
     }
 
     /**
@@ -35,19 +72,15 @@ class NestedSetTest extends DatabaseTest
      */
     public function testAddChildOfFirstNode(): void
     {
-        $clothingNode = $this->createFirstNode();
-
         $suitsNode = new FooNode();
         $suitsNode->setName("Suits");
 
-        $nestedSet = new NestedSet($this->connection);
-
-        $nestedSet->addNode($suitsNode, $clothingNode);
+        $this->nestedSet->addNode($suitsNode, $this->clothingNode);
         $this->save($suitsNode);
 
-        static::assertSame(1, $clothingNode->getNodeId());
-        static::assertSame(1, $clothingNode->getLeft());
-        static::assertSame(4, $clothingNode->getRight());
+        static::assertSame(1, $this->clothingNode->getNodeId());
+        static::assertSame(1, $this->clothingNode->getLeft());
+        static::assertSame(4, $this->clothingNode->getRight());
 
         static::assertSame(2, $suitsNode->getNodeId());
         static::assertSame(2, $suitsNode->getLeft());
@@ -64,28 +97,26 @@ class NestedSetTest extends DatabaseTest
      */
     public function testAddBeforeNode(): void
     {
-        $clothingNode = $this->createFirstNode();
-
         $dressesNode = new FooNode();
         $dressesNode->setName("Dresses");
 
-        $nestedSet = new NestedSet($this->connection);
+        $this->nestedSet = new NestedSet($this->connection);
 
-        $nestedSet->addNode($dressesNode, $clothingNode);
+        $this->nestedSet->addNode($dressesNode, $this->clothingNode);
         $this->save($dressesNode);
 
         $skirtsNode = new FooNode();
         $skirtsNode->setName("Skirts");
 
-        $nestedSet->addNode($skirtsNode, null, $dressesNode);
+        $this->nestedSet->addNode($skirtsNode, null, $dressesNode);
         $this->save($skirtsNode);
 
-        $this->refreshNode($clothingNode);
+        $this->refreshNode($this->clothingNode);
         $this->refreshNode($dressesNode);
 
-        static::assertSame(1, $clothingNode->getNodeId());
-        static::assertSame(1, $clothingNode->getLeft());
-        static::assertSame(6, $clothingNode->getRight());
+        static::assertSame(1, $this->clothingNode->getNodeId());
+        static::assertSame(1, $this->clothingNode->getLeft());
+        static::assertSame(6, $this->clothingNode->getRight());
 
         static::assertSame(2, $dressesNode->getNodeId());
         static::assertSame(4, $dressesNode->getLeft());
@@ -105,44 +136,27 @@ class NestedSetTest extends DatabaseTest
      */
     public function testDeleteSecondNode(): void
     {
-        $clothingNode = $this->createFirstNode();
-
-        $nestedSet = new NestedSet($this->connection);
+        $this->nestedSet = new NestedSet($this->connection);
 
         $suitsNode = new FooNode();
         $suitsNode->setName("Suits");
 
-        $nestedSet->addNode($suitsNode, $clothingNode);
+        $this->nestedSet->addNode($suitsNode, $this->clothingNode);
         $this->save($suitsNode);
 
         $jacketsNode = new FooNode();
         $jacketsNode->setName("Jackets");
 
-        $nestedSet->addNode($jacketsNode, $suitsNode);
+        $this->nestedSet->addNode($jacketsNode, $suitsNode);
         $this->save($jacketsNode);
 
-        $nestedSet->deleteNode($suitsNode);
+        $this->nestedSet->deleteNode($suitsNode);
 
-        $this->refreshNode($clothingNode);
+        $this->refreshNode($this->clothingNode);
 
-        static::assertSame(1, $clothingNode->getNodeId());
-        static::assertSame(1, $clothingNode->getLeft());
-        static::assertSame(2, $clothingNode->getRight());
-    }
-
-    protected function createFirstNode(): FooNode
-    {
-        $this->resetDatabase();
-
-        $clothingNode = new FooNode();
-        $clothingNode->setName("Clothing");
-
-        $nestedSet = new NestedSet($this->connection);
-
-        $nestedSet->addNode($clothingNode);
-        $this->save($clothingNode);
-
-        return $clothingNode;
+        static::assertSame(1, $this->clothingNode->getNodeId());
+        static::assertSame(1, $this->clothingNode->getLeft());
+        static::assertSame(2, $this->clothingNode->getRight());
     }
 
     protected function save(FooNode $node): void

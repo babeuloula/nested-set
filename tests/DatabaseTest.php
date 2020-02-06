@@ -50,27 +50,4 @@ abstract class DatabaseTest extends TestCase
             ]
         );
     }
-
-    protected function resetDatabase(): void
-    {
-        $this
-            ->connection
-            ->prepare(
-                '
-DROP TABLE IF EXISTS `' . static::TABLE_NAME . '`;
-
-CREATE TABLE IF NOT EXISTS `' . static::TABLE_NAME . '` (
-  `' . static::NODE_COLUMN . '` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `' . static::NAME_COLUMN . '` VARCHAR(255) NULL,
-  `' . static::LEFT_COLUMN . '` INT UNSIGNED NULL,
-  `' . static::RIGHT_COLUMN . '` INT UNSIGNED NULL,
-  PRIMARY KEY (`' . static::NODE_COLUMN . '`),
-  UNIQUE INDEX `id_UNIQUE` (`' . static::NODE_COLUMN . '` ASC),
-  UNIQUE INDEX `left_right_count_UNIQUE` (`' . static::LEFT_COLUMN . '` ASC, `' . static::RIGHT_COLUMN . '` ASC))
-ENGINE = InnoDB;
-'
-            )
-            ->execute()
-        ;
-    }
 }
